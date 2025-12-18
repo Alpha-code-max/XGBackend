@@ -1,14 +1,13 @@
 // config/database.js
 const mongoose = require('mongoose');
 
-const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/xgbackend';
+const MONGODB_URI = process.env.MONGODB_URI;
 
 const connectDB = async () => {
   try {
-    await mongoose.connect(MONGO_URI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-    });
+    // In 2025 (Mongoose 6+), no options are needed for the connection
+    await mongoose.connect(MONGODB_URI); 
+    
     console.log('MongoDB connected successfully');
   } catch (err) {
     console.error('MongoDB connection error:', err.message);

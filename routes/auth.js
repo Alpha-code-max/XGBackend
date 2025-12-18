@@ -1,6 +1,18 @@
-// routes/auth.js (or wherever you put it)
+const express = require('express');
+const router = express.Router();
+const passport = require('passport');
+const jwt = require('jsonwebtoken'); // 1. Added JWT import
 const User = require('../models/User');
 
+// 2. Define generateToken locally within this file
+const generateToken = (userPayload, expiresIn = '7d') => {
+  // Ensure you have JWT_SECRET in your .env file
+  return jwt.sign(userPayload, process.env.JWT_SECRET || 'your_fallback_secret', {
+    expiresIn: expiresIn,
+  });
+};
+
+// POST /auth/register - Local user registration
 router.post('/register', async (req, res) => {
   const { username, password, displayName, email } = req.body;
 
@@ -9,89 +21,101 @@ router.post('/register', async (req, res) => {
   }
 
   try {
-    // Check if username already exists
-    let user = await User.findOne({ 
-      $or: [{ username }, { email }] // optional: also block duplicate email
+    const existingUser = await User.findOne({
+      $or: [{ username: username.trim().toLowerCase() }, { email: email?.trim().toLowerCase() }]
     });
 
-    if (user) {
-      return res.status(400).json({ 
-        message: user.username === username 
-          ? 'Username already exists' 
-          : 'Email already registered' 
+    if (existingUser) {
+      return res.status(400).json({
+        message: existingUser.username === username.trim().toLowerCase()
+          ? 'Username already exists'
+          : 'Email already registered'
       });
     }
 
-    // Create local user
-    user = new User({
+    const user = new User({
       provider: 'local',
-      username: username.trim().toLowerCase(), // normalize
-      password, // hashed by pre-save hook
+      username: username.trim().toLowerCase(),
+      password, 
       email: email?.trim().toLowerCase(),
       displayName: displayName || username,
     });
 
     await user.save();
 
-    // Auto-login with Passport session
     req.login(user, (err) => {
       if (err) {
-        console.error('Login after register failed:', err);
         return res.status(500).json({ message: 'Registration succeeded but login failed' });
       }
 
-      // Return safe user data (never send password)
-      const safeUser = {
-        id: user.id,
-        username: user.username,
-        displayName: user.displayName,
-        email: user.email,
-        photo: user.photo,
-        provider: user.provider
-      };
-
-      res.status(201).json({ 
-        message: 'Registration successful', 
-        user: safeUser 
+      res.status(201).json({
+        message: 'Registration successful',
+        user: {
+          id: user.id,
+          username: user.username,
+          displayName: user.displayName,
+          email: user.email,
+          provider: user.provider
+        }
       });
     });
   } catch (err) {
-    console.error('Registration error:', err);
     res.status(500).json({ message: 'Server error during registration' });
   }
 });
 
-router.post('/login', passport.authenticate('local', { 
-  failureMessage: true 
-}), (req, res) => {
-  const safeUser = {
-    id: req.user.id,
-    username: req.user.username,
-    displayName: req.user.displayName,
-    email: req.user.email,
-    provider: req.user.provider
-  };
-  res.json({ message: 'Login successful', user: safeUser });
+// POST /auth/login
+router.post('/login', passport.authenticate('local', { failureMessage: true }), (req, res) => {
+  res.json({
+    message: 'Login successful',
+    user: {
+      id: req.user.id,
+      username: req.user.username,
+      displayName: req.user.displayName || req.user.username,
+      email: req.user.email,
+      provider: req.user.provider
+    }
+  });
 });
 
-// routes/auth.js
+// GET /auth/me - Now uses the local generateToken function
+router.get('/me', (req, res) => {
+  if (!req.isAuthenticated()) {
+    return res.status(401).json({ message: 'Not authenticated' });
+  }
 
-// Logout route
+  // Calling the function defined above
+  const token = generateToken({
+    id: req.user.id,
+    provider: req.user.provider,
+    username: req.user.username,
+    displayName: req.user.displayName || req.user.username,
+    email: req.user.email
+  });
+
+  res.json({
+    message: 'Authenticated',
+    user: {
+      id: req.user.id,
+      username: req.user.username,
+      displayName: req.user.displayName || req.user.username,
+      email: req.user.email,
+      photo: req.user.photo,
+      provider: req.user.provider
+    },
+    token
+  });
+});
+
+// GET /auth/logout
 router.get('/logout', (req, res, next) => {
   req.logout((err) => {
-    if (err) {
-      return next(err);
-    }
+    if (err) return next(err);
     req.session.destroy((err) => {
-      if (err) {
-        console.error('Error destroying session:', err);
-      }
-      // Clear the session cookie
-      res.clearCookie('connect.sid'); // Default cookie name for express-session
-      // Redirect to home or send JSON response
-      res.redirect('/'); // For HTML pages
-      // OR if it's an API call:
-      // res.json({ message: 'Logged out successfully' });
+      res.clearCookie('connect.sid');
+      res.json({ message: 'Logged out successfully' });
     });
   });
 });
+
+module.exports = router;
