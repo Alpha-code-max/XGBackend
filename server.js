@@ -4,6 +4,8 @@ require('dotenv').config();
 const express = require('express');
 const session = require('express-session');
 const bodyParser = require('body-parser');
+const connectDB = require('./config/database');
+
 const { passport } = require('./config/passport');
 
 const indexRoutes = require('./routes/index');
@@ -37,6 +39,8 @@ app.get('/api-docs.json', (req, res) => {
   res.setHeader('Content-Type', 'application/json');
   res.send(swaggerSpec);
 });
+
+connectDB();
 
 // Routes
 app.use('/auth', authRoutes);
