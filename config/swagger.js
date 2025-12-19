@@ -26,7 +26,10 @@ const options = {
     },
     security: [{ sessionAuth: [] }], // Apply globally (optional)
   },
-  apis: ['./routes/*.js', './models/*.js'], // Paths to files with JSDoc comments
+  apis: [
+    path.join(__dirname, '../routes/*.js'),
+    path.join(__dirname, '../models/*.js')
+  ] // Paths to files with JSDoc comments
 };
 
 const swaggerSpec = swaggerJSDoc(options);
