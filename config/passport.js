@@ -1,13 +1,13 @@
 // config/passport.js
 const passport = require('passport');
-const LocalStrategy = require('./../strategies/local');
-const GoogleStrategy = require('./../strategies/google');
-const FacebookStrategy = require('./../strategies/facebook');
-const DiscordStrategy = require('./../strategies/discord');
+const LocalStrategy = require('../strategies/local')
+const GoogleStrategy = require('../strategies/google');
+const DiscordStrategy = require('../strategies/discord');
+// const FacebookStrategy = require('../strategies/facebook');
 
-let users = []; // In production: replace with DB operations
+// In-memory users (demo only – replace with DB in production)
+let users = [];
 
-// Helper to find or create user
 function findOrCreateUser(profile, provider) {
   let user = users.find(u => u.provider === provider && u.providerId === profile.id);
   if (!user) {
@@ -17,14 +17,14 @@ function findOrCreateUser(profile, provider) {
       providerId: profile.id,
       displayName: profile.displayName || profile.username || profile.name || 'User',
       email: profile.emails?.[0]?.value || null,
-      photo: profile.photos?.[0]?.value || null
+      photo: profile.photos?.[0]?.value || null,
     };
     users.push(user);
   }
   return user;
 }
 
-// Serialize & Deserialize
+// Serialize / Deserialize
 passport.serializeUser((user, done) => {
   done(null, user.id);
 });
@@ -34,10 +34,11 @@ passport.deserializeUser((id, done) => {
   done(null, user || false);
 });
 
-// Setup strategies
-passport.use(LocalStrategy);
-passport.use(GoogleStrategy(findOrCreateUser));
-// passport.use(FacebookStrategy(findOrCreateUser));
-passport.use(DiscordStrategy(findOrCreateUser));
+// Register strategies – pass passport instance
 
-module.exports = { passport, users }; // Export users only for testing/demo
+LocalStrategy(passport)
+GoogleStrategy(passport);     // ← pass passport
+DiscordStrategy(passport);    // ← pass passport
+// FacebookStrategy(passport); // uncomment when ready
+
+module.exports = passport;

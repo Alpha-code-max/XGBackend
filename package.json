@@ -7,20 +7,24 @@
     "dev": "nodemon server.js"
   },
   "dependencies": {
+    "@asteasolutions/zod-to-openapi": "^8.2.0",
     "bcryptjs": "^3.0.3",
     "body-parser": "^1.20.4",
     "dotenv": "^17.2.3",
-    "express": "^4.21.0",
+    "express": "^4.22.1",
     "express-session": "^1.18.2",
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.0.2",
+    "mongoose-to-swagger": "^1.5.1",
     "passport": "^0.7.0",
     "passport-discord": "^0.1.4",
     "passport-facebook": "^3.0.0",
     "passport-google-oauth20": "^2.0.0",
     "passport-local": "^1.0.0",
+    "passport-twitter-oauth2": "^2.1.1",
     "swagger-jsdoc": "^6.2.8",
-    "swagger-ui-express": "^5.0.1"
+    "swagger-ui-express": "^5.0.1",
+    "zod": "^4.2.1"
   },
   "devDependencies": {
     "nodemon": "^3.1.7"

@@ -1,122 +1,257 @@
 const express = require('express');
 const router = express.Router();
+const { register, login, getMe, logout } = require('../controllers/authControllers');
+const { getAllUsers, getUserById } = require('../controllers/userController'); // new controller
 const passport = require('passport');
-const jwt = require('jsonwebtoken'); // 1. Added JWT import
-const User = require('../models/User');
+const { body } = require('express-validator');
+const { isAuthenticated, isAdmin } = require('../middleware/auth'); // assuming you have these
 
-// 2. Define generateToken locally within this file
-const generateToken = (userPayload, expiresIn = '7d') => {
-  // Ensure you have JWT_SECRET in your .env file
-  return jwt.sign(userPayload, process.env.JWT_SECRET || 'your_fallback_secret', {
-    expiresIn: expiresIn,
-  });
-};
+/**
+ * @swagger
+ * /auth/register:
+ *   post:
+ *     summary: Register a new local user
+ *     tags: [Authentication]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [username, password]
+ *             properties:
+ *               username: { type: string, minLength: 3, maxLength: 30 }
+ *               password: { type: string, minLength: 8 }
+ *               email: { type: string, format: email }
+ *               displayName: { type: string }
+ *     responses:
+ *       201:
+ *         description: Created
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/AuthResponse' }
+ *       400:
+ *         description: Bad request (validation error or duplicate username/email)
+ *       500:
+ *         description: Server error
+ */
+router.post(
+  '/register',
+  [
+    body('username').trim().notEmpty().isLength({ min: 3, max: 30 }),
+    body('password').isLength({ min: 8 }),
+    body('email').optional().trim().isEmail(),
+    body('displayName').optional().trim(),
+  ],
+  register
+);
 
-// POST /auth/register - Local user registration
-router.post('/register', async (req, res) => {
-  const { username, password, displayName, email } = req.body;
+/**
+ * @swagger
+ * /auth/login:
+ *   post:
+ *     summary: Login with username and password
+ *     tags: [Authentication]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [username, password]
+ *             properties:
+ *               username: { type: string }
+ *               password: { type: string }
+ *     responses:
+ *       200:
+ *         description: Login successful
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/AuthResponse' }
+ *       401:
+ *         description: Invalid credentials
+ */
+router.post('/login', passport.authenticate('local', { session: false }), login);
 
-  if (!username || !password) {
-    return res.status(400).json({ message: 'Username and password are required' });
+/**
+ * @swagger
+ * /auth/me:
+ *   get:
+ *     summary: Get current authenticated user
+ *     tags: [Authentication]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: User data
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/AuthResponse' }
+ *       401:
+ *         description: Unauthorized
+ */
+router.get('/me', getMe);
+
+/**
+ * @swagger
+ * /auth/logout:
+ *   post:
+ *     summary: Logout current session
+ *     tags: [Authentication]
+ *     responses:
+ *       200:
+ *         description: Logged out successfully
+ */
+router.post('/logout', logout);
+
+// ────────────────────────────────────────────────
+// Google OAuth Routes
+// ────────────────────────────────────────────────
+
+/**
+ * @swagger
+ * /auth/google:
+ *   get:
+ *     summary: Initiate Google OAuth login
+ *     tags: [Authentication, OAuth]
+ *     description: Redirects the user to Google's authentication page
+ */
+router.get('/google',
+  passport.authenticate('google', {
+    scope: ['profile', 'email'],
+    prompt: 'select_account'
+  })
+);
+
+/**
+ * @swagger
+ * /auth/google/callback:
+ *   get:
+ *     summary: Google OAuth callback
+ *     tags: [Authentication, OAuth]
+ *     description: Google redirects here after authentication
+ *     responses:
+ *       302:
+ *         description: Redirects to home or dashboard on success
+ *       401:
+ *         description: Authentication failed
+ */
+router.get('/google/callback',
+  passport.authenticate('google', {
+    failureRedirect: '/?error=google_failed',
+    failureMessage: true,
+  }),
+  (req, res) => {
+    const token = req.user ? generateToken(req.user) : null;
+    res.redirect(`/?token=${token || ''}`);
   }
+);
 
-  try {
-    const existingUser = await User.findOne({
-      $or: [{ username: username.trim().toLowerCase() }, { email: email?.trim().toLowerCase() }]
-    });
+// ────────────────────────────────────────────────
+// Discord OAuth Routes
+// ────────────────────────────────────────────────
 
-    if (existingUser) {
-      return res.status(400).json({
-        message: existingUser.username === username.trim().toLowerCase()
-          ? 'Username already exists'
-          : 'Email already registered'
-      });
-    }
+/**
+ * @swagger
+ * /auth/discord:
+ *   get:
+ *     summary: Initiate Discord OAuth login
+ *     tags: [Authentication, OAuth]
+ *     description: Redirects the user to Discord's authentication page
+ */
+router.get('/discord',
+  passport.authenticate('discord', {
+    scope: ['identify', 'email']
+  })
+);
 
-    const user = new User({
-      provider: 'local',
-      username: username.trim().toLowerCase(),
-      password, 
-      email: email?.trim().toLowerCase(),
-      displayName: displayName || username,
-    });
-
-    await user.save();
-
-    req.login(user, (err) => {
-      if (err) {
-        return res.status(500).json({ message: 'Registration succeeded but login failed' });
-      }
-
-      res.status(201).json({
-        message: 'Registration successful',
-        user: {
-          id: user.id,
-          username: user.username,
-          displayName: user.displayName,
-          email: user.email,
-          provider: user.provider
-        }
-      });
-    });
-  } catch (err) {
-    console.log(err)
-    res.status(500).json({ message: 'Server error during registration' });
+/**
+ * @swagger
+ * /auth/discord/callback:
+ *   get:
+ *     summary: Discord OAuth callback
+ *     tags: [Authentication, OAuth]
+ *     description: Discord redirects here after authentication
+ *     responses:
+ *       302:
+ *         description: Redirects to home or dashboard on success
+ *       401:
+ *         description: Authentication failed
+ */
+router.get('/discord/callback',
+  passport.authenticate('discord', {
+    failureRedirect: '/?error=discord_failed',
+    failureMessage: true,
+  }),
+  (req, res) => {
+    const token = req.user ? generateToken(req.user) : null;
+    res.redirect(`/?token=${token || ''}`);
   }
-});
+);
 
-// POST /auth/login
-router.post('/login', passport.authenticate('local', { failureMessage: true }), (req, res) => {
-  res.json({
-    message: 'Login successful',
-    user: {
-      id: req.user.id,
-      username: req.user.username,
-      displayName: req.user.displayName || req.user.username,
-      email: req.user.email,
-      provider: req.user.provider
-    }
-  });
-});
+// ────────────────────────────────────────────────
+// User Management Routes (Protected)
+// ────────────────────────────────────────────────
 
-// GET /auth/me - Now uses the local generateToken function
-router.get('/me', (req, res) => {
-  if (!req.isAuthenticated()) {
-    return res.status(401).json({ message: 'Not authenticated' });
-  }
+/**
+ * @swagger
+ * /auth/users:
+ *   get:
+ *     summary: Get list of all users
+ *     tags: [Users, Admin]
+ *     description: Returns a list of all registered users (admin only)
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of users
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/UserResponse'
+ *       401:
+ *         description: Unauthorized - not authenticated
+ *       403:
+ *         description: Forbidden - insufficient permissions
+ *       500:
+ *         description: Server error
+ */
+router.get('/users', isAuthenticated, isAdmin, getAllUsers);
 
-  // Calling the function defined above
-  const token = generateToken({
-    id: req.user.id,
-    provider: req.user.provider,
-    username: req.user.username,
-    displayName: req.user.displayName || req.user.username,
-    email: req.user.email
-  });
-
-  res.json({
-    message: 'Authenticated',
-    user: {
-      id: req.user.id,
-      username: req.user.username,
-      displayName: req.user.displayName || req.user.username,
-      email: req.user.email,
-      photo: req.user.photo,
-      provider: req.user.provider
-    },
-    token
-  });
-});
-
-// GET /auth/logout
-router.get('/logout', (req, res, next) => {
-  req.logout((err) => {
-    if (err) return next(err);
-    req.session.destroy((err) => {
-      res.clearCookie('connect.sid');
-      res.json({ message: 'Logged out successfully' });
-    });
-  });
-});
+/**
+ * @swagger
+ * /auth/users/{id}:
+ *   get:
+ *     summary: Get details of a specific user
+ *     tags: [Users, Admin]
+ *     description: Returns information about a single user by ID (admin only)
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: User ID (MongoDB ObjectId)
+ *     responses:
+ *       200:
+ *         description: User details
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/UserResponse'
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: User not found
+ *       500:
+ *         description: Server error
+ */
+router.get('/users/:id', isAuthenticated, isAdmin, getUserById);
 
 module.exports = router;

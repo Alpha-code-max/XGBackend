@@ -1,12 +1,16 @@
 // middleware/auth.js
-
-// Middleware to check if a user is authenticated via Passport session
 const isAuthenticated = (req, res, next) => {
   if (req.isAuthenticated()) {
     return next();
   }
-  // Redirect to home or login if not authenticated
-  res.status(401).redirect('/'); 
+  return res.status(401).json({ message: 'Unauthorized - please log in' });
 };
 
-module.exports = { isAuthenticated };
+const isAdmin = (req, res, next) => {
+  if (req.user && req.user.isAdmin) { // assuming you have isAdmin field in User model
+    return next();
+  }
+  return res.status(403).json({ message: 'Forbidden - admin access required' });
+};
+
+module.exports = { isAuthenticated, isAdmin };
