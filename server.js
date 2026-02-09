@@ -57,17 +57,24 @@ app.use(passport.session());
 // 3. Swagger Documentation
 // ────────────────────────────────────────────────
 const specs = swaggerJsdoc({
-  definition: swaggerDefinition,  // base (info, servers, components, securitySchemes, etc.)
+  definition: swaggerDefinition,
   apis: [
-    './routes/*.js',              // this should catch auth.js and index.js
-    // './routes/auth.js',        // optional — add if the wildcard doesn't work
+    './routes/*.js',           // should include auth.js, index.js, etc.
+    './routes/**/*.js',        // optional: recursive if you have subfolders
   ],
 });
+
+// Debug log – very useful for Render
+console.log('Swagger scanning files:', [
+  './routes/*.js',
+  './routes/**/*.js',
+]);
+console.log('Swagger docs mounted at /api-docs');
 
 app.use(
   '/api-docs',
   swaggerUi.serve,
-  swaggerUi.setup(specs, {       // ← use specs here, NOT swaggerDefinition
+  swaggerUi.setup(specs, {           // ← use specs here (not swaggerDefinition)
     explorer: true,
     swaggerOptions: {
       persistAuthorization: true,
@@ -75,7 +82,7 @@ app.use(
       filter: true,
       tryItOutEnabled: true,
     },
-    customCss: '.swagger-ui .topbar { background-color: #1a1a2e }', // optional
+    customCss: '.swagger-ui .topbar { background-color: #1a1a2e }',
   })
 );
 
